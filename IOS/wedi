@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+POSIXLY_CORRECT=yes
+#Funkcie -a,-b pracuju len s poslednym editovanym datumom suboru, zistil som prilis neskoro, ze by mali brat do uvahy vsetky => prepisujem len pocet ovoreni
+writo() {
+	
+	$EDITOR $1 # otvory subor vo zvolenom editore
+	dir=$(pwd)
+	pom=$(grep "$dir\/ $1" "$WEDI_RC") 
+	datum=$(date +'%s')
+	
+	if [ -z "$pom" ]; then 	#pokial este nie je zaznam o subore vo WEDI_RC, tak ho vytvori
+		echo "FILE:$dir/ $1   |1|   LAST:$datum" >> $WEDI_RC
+		
+	else
+		num=$(echo $pom | cut -d "|" -f2 )
+		((num++))
+		temp=${dir//\//\\/}
+		sed -i "s/$temp\/ $1.*/$temp\/ $1   |$num|   LAST:$datum/" $WEDI_RC #najde zaznam daneho suboru, inkrementuje pocet otvoreni a zmeni datum
+	fi	
+	sort -k 4,4 -V $WEDI_RC -o $WEDI_RC #usporiada podla datumu
+	
+}
+#errors
+noEdit() { 
+	if [ -z "$1" ] ; then #pokial nebol este ziadny subor v danom adresare editovany vypise error message ukonci program
+			echo "V adresari nebol editovany este ziaden subor"	
+			exit 1
+	fi
+	
+}
+zadajDatum() {
+	echo "Neplatny datum"	
+	exit 1
+}
+most() {
+	dir=$(pwd)
+	most=$(grep -o "$dir/ .*|" "$WEDI_RC" | sort -k 3,3 -V | tail -1 | grep -oP "(?<=$dir/ ).* " ) #najde subor s najviac editovaniami
+	noEdit $most
+	if [ ! -f $most ] ; then 
+				sed -i "/$most/d" "$WEDI_RC" 	#pokial subor uz neexistuje tak vymaze jeho zaznam a znova zavola funkciu most
+				most
+	else
+	writo $most # zavola funkciu writo s danym suborom ako argument
+	fi
+}
+last() {
+	dir=$(pwd)
+	last=$(grep -oP "(?<=$dir/ ).* " "$WEDI_RC" | cut -d "|" -f1 | tail -1) #najde posledny editovany subor
+	noEdit $last	
+	if [ ! -f $last ] ; then 
+				sed -i "/$last/d" "$WEDI_RC" #pokial subor uz neexistuje tak vymaze jeho zaznam a znova zavola funkciu last	
+				last
+	else
+	writo $last # zavola funkciu writo s danym suborom ako argument
+	fi
+	fi
+	
+
+}
+writeAll(){
+	dir=$(pwd)
+	all=$(grep -oP "(?<=$dir/ ).* " "$WEDI_RC" | cut -d "|" -f1 ) #najde vsetky hladane subory v danom adresari
+	noEdit $all
+	echo "$all"
+}
+writeB(){ #vypise vsetky subory,  ktore boli posledny krat editovane pred danym datumom
+	dir=$(pwd)
+	datum=$(date -d $1 +'%s')
+	before=$(grep -o "$dir/ .*" "$WEDI_RC" | awk -v var="$datum" -F"LAST:" 'var>=$2' | grep -oP "(?<=$dir/ ).* " | cut -d "|" -f1 )
+	echo "$before"
+
+
+}
+writeA(){ #vypise vsetky subory,  ktore boli posledny krat editovane po danom datume
+	dir=$(pwd)
+	datum=$(date -d $1 +'%s')
+	after=$(grep -o "$dir/ .*" "$WEDI_RC" | awk -v var="$datum" -F"LAST:" 'var<=$2' | grep -oP "(?<=$dir/ ).* " | cut -d "|" -f1 )
+	echo "$after"
+
+
+}
+if [ -z "$EDITOR" ] ; then #nastavenie EDITORU
+			if [ -z "$VISUAL" ] ; then  EDITOR="vi" 
+						else EDITOR=$VIUSAL ; fi
+fi
+
+if [ -z "$WEDI_RC" ] ; then #pokial neni zadany WEDI_RC 
+	echo "neni zadany WEDI_RC subor"
+	exit 1	
+fi
+
+if [ ! -f "$WEDI_RC" ] ; then touch $WEDI_RC || exit 1 ; fi #pokial nejde vytvorit WEDI_RC vypise error z touchu a ukonci program
+
+
+if [ -f "$1" ] ;then #pokial je prvy argument subor tak ho spusti cez funkciu writo
+	writo $1
+	exit 0
+	
+	
+else 
+	if [ -d "$1" ] || [ "$#" == "0" ] ; then 
+		if [ -d "$1" ] ; then cd "$1"; fi #pokial je prvy argument adresar tak zmeni adresu cez cd
+		last #zavola funkciu last
+		exit 0
+	else 	
+		if [ "$#" == "2" ] && [ -d "$2" ]; then cd "$2"; fi #pokial boli zadane 2 argumenty a 2. je adresar tak zmeni adresu cez cd
+		if [ "$#" == "3" ] && [ -d "$3" ]; then cd "$3"; fi #pokial boli zadane 3 argumenty a 3. je adresar tak zmeni adresu cez cd
+			case $1 in #pokial je prvy argument : 
+				"-m") 
+					most	
+					exit 0
+					;;
+				"-l") 
+					writeAll
+					exit 0
+					;;
+				"-a")
+				
+					if [ "$#" == "1" ]; then zadajDatum ;fi # pokial nebol zadany datum, tak vypise error
+					writeA $2	
+					exit 0
+					;;
+				"-b")
+					if [ "$#" == "1" ]; then zadajDatum ;fi
+					writeB $2	
+					exit 0
+					;;	
+				
+			esac
+	 	
+	fi 
+	
+fi
+echo "neplatny subor" 
+exit 1
+
+
+
